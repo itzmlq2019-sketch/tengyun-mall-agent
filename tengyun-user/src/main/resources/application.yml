@@ -1,0 +1,20 @@
+server:
+  port: 8081 # 每个微服务的端口不能冲突
+spring:
+  application:
+    name: user-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 10.177.3.189:8848 # 告诉它 Nacos 的地址
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://127.0.0.1:3306/tengyun_user?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: root
+    password: *
+
+
+  mybatis-plus:
+    configuration:
+            # 开启 SQL 日志打印，这在后续排错时是救命的神器
+      log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
