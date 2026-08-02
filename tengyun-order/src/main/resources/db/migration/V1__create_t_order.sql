@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS t_order (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    user_id BIGINT NOT NULL,
+    product_id BIGINT NOT NULL,
+    product_name VARCHAR(255),
+    price DECIMAL(10,2),
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);

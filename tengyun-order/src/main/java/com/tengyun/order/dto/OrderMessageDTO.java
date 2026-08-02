@@ -9,6 +9,7 @@ import java.io.Serializable;
 @AllArgsConstructor
 @NoArgsConstructor
 public class OrderMessageDTO implements Serializable {
+    private String requestId;
     private Long userId;
     private Long productId;
     private Integer quantity;

@@ -18,17 +18,28 @@ public class CartServiceImpl implements CartService {
     private CartItemMapper cartItemMapper;
 
     @Override
-    @Transactional(rollbackFor = Exception.class) // 涉及写操作，加上事务兜底
-    public void addCart(Long userId, Long productId, String productName, BigDecimal price) {
-        // 这里如果是大厂逻辑，通常会先查一下该商品是否已在购物车，有则 quantity+1，没有则 insert
-        // 先保留原来的逻辑，做纯粹的重构
+    @Transactional(rollbackFor = Exception.class)
+    public void addCart(Long userId, Long productId, String productName, BigDecimal price, Integer quantity) {
+        int safeQuantity = (quantity == null || quantity <= 0) ? 1 : quantity;
+
+        QueryWrapper<CartItem> wrapper = new QueryWrapper<>();
+        wrapper.eq("user_id", userId).eq("product_id", productId);
+        CartItem existingItem = cartItemMapper.selectOne(wrapper);
+
+        if (existingItem != null) {
+            existingItem.setQuantity(existingItem.getQuantity() + safeQuantity);
+            existingItem.setProductName(productName);
+            existingItem.setPrice(price);
+            cartItemMapper.updateById(existingItem);
+            return;
+        }
+
         CartItem item = new CartItem();
         item.setUserId(userId);
         item.setProductId(productId);
         item.setProductName(productName);
         item.setPrice(price);
-        item.setQuantity(1);
-
+        item.setQuantity(safeQuantity);
         cartItemMapper.insert(item);
     }
 
@@ -37,6 +48,14 @@ public class CartServiceImpl implements CartService {
         QueryWrapper<CartItem> wrapper = new QueryWrapper<>();
         wrapper.eq("user_id", userId);
         return cartItemMapper.selectList(wrapper);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void removeItem(Long userId, Long productId) {
+        QueryWrapper<CartItem> wrapper = new QueryWrapper<>();
+        wrapper.eq("user_id", userId).eq("product_id", productId);
+        cartItemMapper.delete(wrapper);
     }
 
     @Override

@@ -6,29 +6,68 @@ import com.tengyun.order.dto.OrderMessageDTO;
 import com.tengyun.order.entity.Order;
 import com.tengyun.order.mapper.OrderMapper;
 import com.tengyun.order.service.OrderService;
+import org.springframework.amqp.core.MessageDeliveryMode;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 @Service
 public class OrderServiceImpl extends ServiceImpl<OrderMapper, Order> implements OrderService {
+
+    private static final long PUBLISH_CONFIRM_TIMEOUT_SECONDS = 5;
 
     @Autowired
     private RabbitTemplate rabbitTemplate; // 注入兔子的发信器
 
     @Override
     public String checkout(Long userId, Long productId, Integer quantity) {
-        System.out.println("🟢 [主线程] 接收到下单请求：用户 " + userId + "，商品 " + productId + "，数量 " + quantity);
+        if (userId == null || productId == null || quantity == null || quantity <= 0) {
+            throw new IllegalArgumentException("INVALID_ORDER_REQUEST");
+        }
+        String requestId = UUID.randomUUID().toString();
 
-        // 封装成对象
-        OrderMessageDTO messageDTO = new OrderMessageDTO(userId, productId, quantity);
+        OrderMessageDTO messageDTO = new OrderMessageDTO(requestId, userId, productId, quantity);
 
-        // 发送整个对象给 MQ
-        rabbitTemplate.convertAndSend(RabbitConfig.ORDER_EXCHANGE, RabbitConfig.ORDER_ROUTING_KEY, messageDTO);
+        CorrelationData correlationData = new CorrelationData(requestId);
+        rabbitTemplate.convertAndSend(
+                RabbitConfig.ORDER_EXCHANGE,
+                RabbitConfig.ORDER_ROUTING_KEY,
+                messageDTO,
+                message -> {
+                    message.getMessageProperties().setDeliveryMode(MessageDeliveryMode.PERSISTENT);
+                    return message;
+                },
+                correlationData
+        );
 
-        return "您的订单已受理，系统正在为您处理商品 ID 为 " + productId + " 的出库流程！";
+        awaitBrokerConfirmation(correlationData);
+
+        return "ORDER_ACCEPTED:" + requestId;
+    }
+
+    private void awaitBrokerConfirmation(CorrelationData correlationData) {
+        try {
+            CorrelationData.Confirm confirm = correlationData.getFuture()
+                    .get(PUBLISH_CONFIRM_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!confirm.isAck()) {
+                throw new IllegalStateException("ORDER_MESSAGE_NACK:" + confirm.getReason());
+            }
+            if (correlationData.getReturned() != null) {
+                throw new IllegalStateException("ORDER_MESSAGE_UNROUTABLE");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("ORDER_MESSAGE_CONFIRM_INTERRUPTED", e);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new IllegalStateException("ORDER_MESSAGE_CONFIRM_TIMEOUT", e);
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new IllegalStateException("ORDER_MESSAGE_CONFIRM_FAILED", e);
+        }
     }
     @Override
     public List<Order> getHistory(Long userId) {

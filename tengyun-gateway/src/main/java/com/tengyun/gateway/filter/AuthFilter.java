@@ -1,71 +1,94 @@
 package com.tengyun.gateway.filter;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tengyun.gateway.security.JwtTokenProvider;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
+import java.util.Map;
+import java.util.Set;
 
 @Component
 public class AuthFilter implements GlobalFilter, Ordered {
 
-    private static final String SECRET_KEY = "TengYunMallSecretKeyMustBeAtLeast256BitsLong==";
-    private static final Key KEY = Keys.hmacShaKeyFor(SECRET_KEY.getBytes(StandardCharsets.UTF_8));
+    private static final Set<String> PUBLIC_PATHS = Set.of("/user/login");
+    private static final Set<String> PUBLIC_PREFIXES = Set.of(
+            "/swagger-ui",
+            "/v3/api-docs"
+    );
+
+    private final JwtTokenProvider jwtTokenProvider;
+    private final ObjectMapper objectMapper;
+
+    public AuthFilter(JwtTokenProvider jwtTokenProvider, ObjectMapper objectMapper) {
+        this.jwtTokenProvider = jwtTokenProvider;
+        this.objectMapper = objectMapper;
+    }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
 
-        // 1. 登录接口白名单放行
-        if ("/user/login".equals(path)) {
+        if (HttpMethod.OPTIONS.equals(exchange.getRequest().getMethod()) || isPublicPath(path)) {
             return chain.filter(exchange);
         }
 
-        // 2. 获取 Token
         String token = exchange.getRequest().getHeaders().getFirst("Authorization");
-        if (token == null || token.isEmpty()) {
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
+        if (token == null || token.isBlank()) {
+            return unauthorized(exchange, "TOKEN_MISSING");
         }
 
-        // 3. 验签与身份透传
+        if (token.startsWith("Bearer ")) {
+            token = token.substring(7);
+        }
+
         try {
-            if (token.startsWith("Bearer ")) {
-                token = token.substring(7);
-            }
-
-            // 核心改变：不仅要验签，还要把里面的 Claims（载荷数据）拿出来
-            Claims claims = Jwts.parserBuilder().setSigningKey(KEY).build().parseClaimsJws(token).getBody();
-
-            // 提取我们在 User 服务颁发 Token 时塞进去的 userId
+            Claims claims = jwtTokenProvider.parseToken(token);
             String userId = String.valueOf(claims.get("userId"));
-
-            // 改写前端的请求，把提取出来的 userId 塞进一个名叫 X-User-Id 的内部请求头里
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
-                    .header("X-User-Id", userId)
+                    .headers(headers -> {
+                        headers.remove("X-User-Id");
+                        headers.set("X-User-Id", userId);
+                    })
                     .build();
+            return chain.filter(exchange.mutate().request(mutatedRequest).build());
+        } catch (Exception ex) {
+            return unauthorized(exchange, "TOKEN_INVALID");
+        }
+    }
 
-            // 用包装好的新请求替换老请求
-            ServerWebExchange mutatedExchange = exchange.mutate().request(mutatedRequest).build();
+    private boolean isPublicPath(String path) {
+        if (PUBLIC_PATHS.contains(path)) {
+            return true;
+        }
+        return PUBLIC_PREFIXES.stream().anyMatch(path::startsWith);
+    }
 
-            System.out.println("网关保安：验签通过！提取出真实身份 userId=" + userId + "，已塞入内部请求头放行！");
+    private Mono<Void> unauthorized(ServerWebExchange exchange, String reason) {
+        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+        exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
+        byte[] body = toBody(reason);
+        return exchange.getResponse().writeWith(Mono.just(exchange.getResponse()
+                .bufferFactory()
+                .wrap(body)));
+    }
 
-            // 这里传给下游的是带了新 Header 的 mutatedExchange
-            return chain.filter(mutatedExchange);
-
-        } catch (Exception e) {
-            System.out.println("网关保安：拦截伪造/过期 Token！");
-            exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
-            return exchange.getResponse().setComplete();
+    private byte[] toBody(String reason) {
+        try {
+            return objectMapper.writeValueAsBytes(Map.of("code", 401, "message", reason));
+        } catch (JsonProcessingException e) {
+            return "{\"code\":401,\"message\":\"TOKEN_INVALID\"}".getBytes(StandardCharsets.UTF_8);
         }
     }
 

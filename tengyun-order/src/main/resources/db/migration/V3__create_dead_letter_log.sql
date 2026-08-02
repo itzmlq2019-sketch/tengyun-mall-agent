@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS t_order_dead_letter_log (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    request_id VARCHAR(64) NULL,
+    reason VARCHAR(128) NOT NULL,
+    payload TEXT NOT NULL,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+);
