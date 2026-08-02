@@ -1,23 +1,39 @@
 server:
   port: 8082
 spring:
-  spring:
-    rabbitmq:
-      host: 127.0.0.1
-      port: 5672
-      username: guest
-      password: guest
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 500ms
+          multiplier: 2
+          max-interval: 5s
   application:
     name: order-service
   cloud:
     nacos:
       discovery:
-        server-addr: 10.177.3.189:8848
+        server-addr: ${NACOS_ADDR:127.0.0.1:8848}
   datasource:
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://127.0.0.1:3306/tengyun_order?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
-    username: root
-    password: *
+    url: jdbc:mysql://${MYSQL_HOST:127.0.0.1}:${MYSQL_PORT:3306}/${ORDER_DB_NAME:tengyun_order}?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USER:root}
+    password: "${MYSQL_PASSWORD:}"
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
 
 mybatis-plus:
   configuration:

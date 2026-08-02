@@ -1,12 +1,13 @@
 package com.tengyun.agent.client;
 
-import com.tengyun.agent.dto.CheckoutDTO; // 🌟 修复：引入刚刚在 agent 本地创建的 DTO
-import com.tengyun.agent.config.AgentToolConfig.OrderHistoryDTO; // 🌟 引入内部 Record
+import com.tengyun.agent.config.AgentToolConfig.OrderHistoryDTO;
+import com.tengyun.agent.dto.ApiResponse;
+import com.tengyun.agent.dto.CheckoutDTO;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.util.List;
 
@@ -14,9 +15,8 @@ import java.util.List;
 public interface OrderClient {
 
     @PostMapping("/order/checkout")
-    String checkout(@RequestBody CheckoutDTO dto);
+    ApiResponse<String> checkout(@RequestHeader("X-User-Id") Long userId, @RequestBody CheckoutDTO dto);
 
-    // 新增：调用 order-service 的历史订单接口
-    @GetMapping("/order/history/{userId}")
-    List<OrderHistoryDTO> getHistory(@PathVariable("userId") Long userId);
+    @GetMapping("/order/history")
+    ApiResponse<List<OrderHistoryDTO>> getHistory(@RequestHeader("X-User-Id") Long userId);
 }

@@ -1,34 +1,112 @@
-# 腾云智能导购商城 (Tengyun AI E-Commerce)
+# Tengyun AI Shopping Assistant (Microservices)
 
-本项目是一个基于 Spring Cloud 微服务架构与大语言模型 (LLM) 深度结合的新零售电商平台。核心创新点在于通过 Spring AI 框架的 Function Calling 能力，将传统的电商购买链路（商品查询、加购、订单结算）重构为基于自然语言的智能导购对话流（LUI）。
+This project is an e-commerce microservice system based on Spring Cloud Alibaba.
+Its core value is turning the classic flow (`search -> add to cart -> checkout`) into an AI-driven shopping conversation.
 
-## 核心架构与技术亮点
+## Tech Stack
 
-### 1. AI Agent 导购链路编排
-- **微服务工具化封装**：将底层微服务接口（查询、加购、关联推荐、结账）通过 `@Tool` 注解暴露给大语言模型。AI 可根据用户意图，在单次对话中自主决策并进行多工具的链式调用。
-- **全链路参数安全透传**：通过定制 DTO 与 Feign 客户端，解决大模型提取参数在 Agent -> Gateway -> 业务微服务间的类型丢失与跨域传输问题。
+- Spring Boot 3.2.4
+- Spring Cloud + Spring Cloud Alibaba (Nacos, Gateway, OpenFeign)
+- MySQL + MyBatis-Plus
+- Redis + Redisson
+- RabbitMQ
+- DeepSeek API (through `tengyun-agent`)
 
-### 2. 高并发下单与防御体系
-- **RabbitMQ 异步削峰**：针对大模型快速决策带来的瞬时订单洪峰，将同步下单与扣减库存逻辑解耦。Agent 投递消息后直接响应，后台消费者监听队列异步处理，提升吞吐量。
-- **双重防超卖机制**：底层依赖 MySQL 乐观锁进行数据兜底，应用层利用 Redisson 实现基于商品 ID 的细粒度分布式锁，在并发场景下确保库存扣减的绝对安全。
+## Modules
 
-### 3. 缓存优化与网关鉴权
-- **Cache Aside 模式重构**：弃用简单的 Spring Cache 注解，手动实现旁路缓存逻辑。引入 Jackson 解决 Redis 对象序列化异常，并采用延迟双删策略，保障高负载下的缓存与数据库最终一致性。
-- **Spring Cloud Gateway 全局鉴权**：构建统一 API 网关，拦截并校验 JWT Token。鉴权通过后，将 `X-User-Id` 写入请求头透传至下游微服务，实现内部调用的绝对信任与安全隔离。
+- `tengyun-gateway`: API gateway, JWT auth, user context forwarding
+- `tengyun-user`: login and user info
+- `tengyun-product`: product and stock
+- `tengyun-cart`: cart management
+- `tengyun-order`: checkout and order history
+- `tengyun-agent`: AI shopping assistant
 
-## 技术栈选型
+## Resume-Ready Improvements
 
-- **基础框架**：Spring Boot 3.x, Spring Cloud Alibaba (Nacos, OpenFeign, Gateway)
-- **AI 框架**：Spring AI
-- **存储与缓存**：MySQL 8.0, MyBatis-Plus, Redis, Redisson
-- **消息队列**：RabbitMQ
+- Security:
+  - JWT secret moved from hard-coded value to env var (`JWT_SECRET`)
+  - gateway returns structured `401` JSON errors
+  - gateway overwrites incoming `X-User-Id` to prevent header spoofing
+- Login hardening:
+  - query by username, then verify password
+  - supports BCrypt hash while keeping plain-text compatibility for old data
+  - unified login response (`code/message/data`)
+- Config hardening:
+  - sensitive config moved to `.env`
+  - `env.example` provided as template
+- API docs:
+  - `springdoc-openapi` integrated in all services
+- Quality:
+  - unit tests for `PasswordService` and `AuthFilter`
+- Dev experience:
+  - one-click scripts to start/stop all services
 
-## 项目结构
+## Run Locally
 
-```text
-tengyun-parent
-├── tengyun-gateway    # API 网关 (全局鉴权、路由分发)
-├── tengyun-user       # 用户微服务 (Token 颁发)
-├── tengyun-product    # 商品微服务 (库存扣减、Redis 缓存维护)
-├── tengyun-order      # 订单微服务 (订单落库、RabbitMQ 消费、分布式锁)
-└── tengyun-agent      # 智能中枢 (LLM 接入、业务编排)
+1. Start dependencies: MySQL, Redis, RabbitMQ, Nacos.
+2. Create `.env` at project root (copy from `env.example`).
+3. Build:
+
+```bash
+E:\maven\apache-maven-3.9.15\bin\mvn.cmd clean package -DskipTests
+```
+
+4. Start all services:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-all.ps1
+```
+
+5. Stop all services:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-all.ps1
+```
+
+## Database Migration (Flyway)
+
+`tengyun-order` now uses Flyway migrations under:
+
+`tengyun-order/src/main/resources/db/migration`
+
+- `V1__create_t_order.sql`
+- `V2__enhance_t_order_fields.sql`
+- `V3__create_dead_letter_log.sql`
+
+On service startup, Flyway auto-applies pending versions.
+For existing databases, `baseline-on-migrate=true` is enabled to avoid breaking startup.
+
+## API Docs
+
+After startup, open each service directly:
+
+- gateway: `http://127.0.0.1:8080/swagger-ui.html`
+- user: `http://127.0.0.1:8081/swagger-ui.html`
+- order: `http://127.0.0.1:8082/swagger-ui.html`
+- product: `http://127.0.0.1:8083/swagger-ui.html`
+- cart: `http://127.0.0.1:8084/swagger-ui.html`
+- agent: `http://127.0.0.1:8085/swagger-ui.html`
+
+## Smoke Test
+
+After all services are up, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke-test.ps1
+```
+
+This script checks:
+- all service ports are listening
+- all `v3/api-docs` endpoints are reachable
+- basic input-validation contracts return `400` instead of `500`
+
+## Key Environment Variables
+
+- `MYSQL_HOST` `MYSQL_PORT` `MYSQL_USER` `MYSQL_PASSWORD`
+- `USER_DB_NAME` `PRODUCT_DB_NAME` `ORDER_DB_NAME` `CART_DB_NAME` `AGENT_DB_NAME`
+- `NACOS_ADDR`
+- `REDIS_HOST` `REDIS_PORT` `REDIS_PASSWORD`
+- `RABBITMQ_HOST` `RABBITMQ_PORT` `RABBITMQ_USER` `RABBITMQ_PASSWORD`
+- `DEEPSEEK_API_KEY` `DEEPSEEK_BASE_URL` `DEEPSEEK_MODEL`
+- `AGENT_SYSTEM_PROMPT_FILE` `AGENT_PROMPT_RELOAD_INTERVAL_MS`
+- `JWT_SECRET` `JWT_EXPIRE_HOURS`

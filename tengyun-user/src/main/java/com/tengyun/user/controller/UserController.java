@@ -1,37 +1,46 @@
 package com.tengyun.user.controller;
 
+import com.tengyun.user.dto.ApiResponse;
+import com.tengyun.user.dto.LoginResponse;
 import com.tengyun.user.entity.User;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import com.tengyun.user.security.JwtTokenProvider;
 import com.tengyun.user.service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.validation.annotation.Validated;
 
 @RestController
+@Validated
 @RequestMapping("/user")
 public class UserController {
 
-    @Autowired
-    private UserService userService;
+    private final UserService userService;
+    private final JwtTokenProvider jwtTokenProvider;
 
-    /**
-     * 接口 1：查询用户信息 (Feign 调用)
-     */
-    @GetMapping("/info/{id}")
-    public User getUserInfo(@PathVariable("id") Long id) {
-        // 直接调用 Service 继承自 IService 的方法
-        return userService.getById(id);
+    public UserController(UserService userService, JwtTokenProvider jwtTokenProvider) {
+        this.userService = userService;
+        this.jwtTokenProvider = jwtTokenProvider;
     }
 
-    /**
-     * 接口 2：用户登录 (前端调用)
-     */
-    @PostMapping("/login")
-    public String login(@RequestParam String username, @RequestParam String password) {
-        // 🌟 逻辑全部下沉，Controller 只负责调度
-        String token = userService.login(username, password);
+    @GetMapping("/me")
+    public ApiResponse<User> getUserInfo(
+            @RequestHeader("X-User-Id") @Min(value = 1, message = "USER_ID_INVALID") Long userId
+    ) {
+        return ApiResponse.success(userService.getById(userId));
+    }
 
-        if (token == null) {
-            return "登录失败：账号或密码错误！";
-        }
-        return token;
+    @PostMapping("/login")
+    public ApiResponse<LoginResponse> login(
+            @RequestParam @NotBlank(message = "USERNAME_REQUIRED") String username,
+            @RequestParam @NotBlank(message = "PASSWORD_REQUIRED") String password
+    ) {
+        String token = userService.login(username, password);
+        return ApiResponse.success(new LoginResponse(token, "Bearer", jwtTokenProvider.getExpireSeconds()));
     }
 }

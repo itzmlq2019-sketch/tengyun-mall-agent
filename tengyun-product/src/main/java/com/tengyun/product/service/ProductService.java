@@ -7,7 +7,8 @@ public interface ProductService {
     Product getProductInfo(Long id);
 
     // 2. 扣减库存（包含双删逻辑）
-    String deductStock(Long productId, Integer num);
+    String deductStock(String requestId, Long productId, Integer num);
+    String compensateStock(String requestId);
     List<Product> getRelatedProducts(Long categoryId, Long productId);
     // (如果之前还有查推荐商品的方法，也统一定义在这里)
 }
