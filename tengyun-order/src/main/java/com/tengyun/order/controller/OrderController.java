@@ -6,6 +6,7 @@ import com.tengyun.order.entity.OrderDeadLetterLog;
 import com.tengyun.order.entity.Order;
 import com.tengyun.order.service.DeadLetterService;
 import com.tengyun.order.service.OrderService;
+import com.tengyun.order.security.AdminApiGuard;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -27,10 +28,12 @@ public class OrderController {
 
     private final OrderService orderService;
     private final DeadLetterService deadLetterService;
+    private final AdminApiGuard adminApiGuard;
 
-    public OrderController(OrderService orderService, DeadLetterService deadLetterService) {
+    public OrderController(OrderService orderService, DeadLetterService deadLetterService, AdminApiGuard adminApiGuard) {
         this.orderService = orderService;
         this.deadLetterService = deadLetterService;
+        this.adminApiGuard = adminApiGuard;
     }
 
     @PostMapping("/checkout")
@@ -50,15 +53,19 @@ public class OrderController {
 
     @GetMapping("/dead-letter")
     public ApiResponse<List<OrderDeadLetterLog>> deadLetters(
+            @RequestHeader(value = "X-Admin-Token", required = false) String adminToken,
             @RequestParam(defaultValue = "20") @Min(value = 1, message = "LIMIT_INVALID") @Max(value = 100, message = "LIMIT_TOO_LARGE") Integer limit
     ) {
+        adminApiGuard.verify(adminToken);
         return ApiResponse.success(deadLetterService.latest(limit));
     }
 
     @PostMapping("/dead-letter/requeue")
     public ApiResponse<String> requeue(
+            @RequestHeader(value = "X-Admin-Token", required = false) String adminToken,
             @RequestParam("id") @Min(value = 1, message = "ID_INVALID") Long id
     ) {
+        adminApiGuard.verify(adminToken);
         return ApiResponse.success(deadLetterService.requeue(id));
     }
 }

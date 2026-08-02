@@ -4,6 +4,7 @@ import com.tengyun.order.entity.Order;
 import com.tengyun.order.exception.GlobalExceptionHandler;
 import com.tengyun.order.service.DeadLetterService;
 import com.tengyun.order.service.OrderService;
+import com.tengyun.order.security.AdminApiGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -25,6 +26,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ExtendWith(MockitoExtension.class)
 class OrderControllerTest {
 
+    private static final String ADMIN_TOKEN = "test-admin-token-at-least-32-characters";
+
     @Mock
     private OrderService orderService;
     @Mock
@@ -34,7 +37,7 @@ class OrderControllerTest {
 
     @BeforeEach
     void setUp() {
-        OrderController controller = new OrderController(orderService, deadLetterService);
+        OrderController controller = new OrderController(orderService, deadLetterService, new AdminApiGuard(ADMIN_TOKEN));
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -80,5 +83,23 @@ class OrderControllerTest {
                 .andExpect(jsonPath("$.data[0].id").value(100));
 
         verify(orderService).getHistory(7L);
+    }
+
+    @Test
+    void shouldRejectDeadLetterAccessWithoutAdminToken() throws Exception {
+        mockMvc.perform(get("/order/dead-letter"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.message").value("ADMIN_ACCESS_DENIED"));
+    }
+
+    @Test
+    void shouldAllowDeadLetterAccessWithAdminToken() throws Exception {
+        when(deadLetterService.latest(20)).thenReturn(List.of());
+
+        mockMvc.perform(get("/order/dead-letter").header("X-Admin-Token", ADMIN_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.code").value(1));
+
+        verify(deadLetterService).latest(20);
     }
 }

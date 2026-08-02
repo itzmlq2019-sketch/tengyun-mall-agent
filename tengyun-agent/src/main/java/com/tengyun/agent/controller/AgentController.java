@@ -1,29 +1,33 @@
 package com.tengyun.agent.controller;
 
+import com.tengyun.agent.dto.ApiResponse;
+import com.tengyun.agent.dto.ChatRequest;
 import com.tengyun.agent.service.AgentService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.*;
-import reactor.core.publisher.Flux;
-import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 @RestController
+@Validated
 @RequestMapping("/agent")
-@CrossOrigin
 public class AgentController {
 
-    @Autowired
-    private AgentService agentService; // 只注入大脑 Service
+    private final AgentService agentService;
 
-    @GetMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> chatStream(@RequestHeader("X-User-Id") Long userId,
-                                   @RequestParam("message") String message,
-                                   HttpServletResponse response) {
+    public AgentController(AgentService agentService) {
+        this.agentService = agentService;
+    }
 
-        // 1. 设置基础响应编码
-        response.setCharacterEncoding("UTF-8");
-
-        // 2. 核心逻辑直接甩给 Service，Controller 层只需返回 Flux 流即可
-        return agentService.chatStream(userId, message);
+    @PostMapping("/chat")
+    public ApiResponse<String> chat(
+            @RequestHeader("X-User-Id") @Min(value = 1, message = "USER_ID_INVALID") Long userId,
+            @Valid @RequestBody ChatRequest request
+    ) {
+        return new ApiResponse<>(1, "SUCCESS", agentService.chat(userId, request.message()));
     }
 }

@@ -13,10 +13,8 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -37,6 +35,7 @@ public class AgentServiceImpl implements AgentService {
     private final AgentToolConfig agentToolConfig;
     private final AuditService auditService;
     private final PromptProvider promptProvider;
+    private final long requestTimeoutMs;
     private static final Set<String> ALLOWED_TOOLS = new HashSet<>(Arrays.asList(
             "productTool",
             "checkoutTool",
@@ -65,7 +64,8 @@ public class AgentServiceImpl implements AgentService {
             @Value("${spring.ai.openai.base-url:https://api.deepseek.com}") String baseUrl,
             @Value("${spring.ai.openai.api-key:${DEEPSEEK_API_KEY:}}") String apiKey,
             @Value("${spring.ai.openai.chat.options.model:deepseek-chat}") String model,
-            @Value("${agent.safety.max-user-message-length:2000}") int maxUserMessageLength
+            @Value("${agent.safety.max-user-message-length:2000}") int maxUserMessageLength,
+            @Value("${agent.request-timeout-ms:30000}") long requestTimeoutMs
     ) {
         this.webClient = webClientBuilder.baseUrl(baseUrl).build();
         this.objectMapper = objectMapper;
@@ -75,31 +75,34 @@ public class AgentServiceImpl implements AgentService {
         this.apiKey = apiKey;
         this.model = model;
         this.maxUserMessageLength = maxUserMessageLength;
+        this.requestTimeoutMs = requestTimeoutMs;
     }
 
     @Override
-    public Flux<String> chatStream(Long userId, String message) {
+    public String chat(Long userId, String message) {
         long startTime = System.currentTimeMillis();
 
         if (apiKey == null || apiKey.isBlank()) {
-            return Flux.just("AGENT_ERROR: DEEPSEEK_API_KEY_NOT_CONFIGURED");
+            return "AGENT_ERROR: DEEPSEEK_API_KEY_NOT_CONFIGURED";
         }
         if (message == null || message.isBlank()) {
-            return Flux.just("AGENT_ERROR: EMPTY_MESSAGE");
+            return "AGENT_ERROR: EMPTY_MESSAGE";
         }
         if (message.length() > maxUserMessageLength) {
-            return Flux.just("AGENT_BLOCKED: INPUT_TOO_LONG");
+            return "AGENT_BLOCKED: INPUT_TOO_LONG";
         }
         String inputBlockedReason = checkInputRisk(message);
         if (inputBlockedReason != null) {
-            return Flux.just("AGENT_BLOCKED: " + inputBlockedReason);
+            return "AGENT_BLOCKED: " + inputBlockedReason;
         }
 
-        return Mono.fromCallable(() -> callDeepSeekWithTools(userId, message))
-                .map(this::maskSensitiveOutput)
-                .doOnSuccess(content -> saveAudit(userId, message, content, startTime))
-                .onErrorResume(ex -> Mono.just("AGENT_ERROR: " + ex.getClass().getSimpleName()))
-                .flux();
+        try {
+            String content = maskSensitiveOutput(callDeepSeekWithTools(userId, message));
+            saveAudit(userId, message, content, startTime);
+            return content;
+        } catch (Exception ex) {
+            return "AGENT_ERROR: " + ex.getClass().getSimpleName();
+        }
     }
 
     private String callDeepSeekWithTools(Long userId, String message) throws Exception {
@@ -164,7 +167,7 @@ public class AgentServiceImpl implements AgentService {
                 .bodyValue(payload)
                 .retrieve()
                 .bodyToMono(String.class)
-                .block();
+                .block(Duration.ofMillis(requestTimeoutMs));
         if (response == null || response.isBlank()) {
             throw new IllegalStateException("EMPTY_RESPONSE");
         }

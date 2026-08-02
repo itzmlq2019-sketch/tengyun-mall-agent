@@ -13,9 +13,7 @@ import java.security.Key;
 @Component
 public class JwtTokenProvider {
 
-    private static final String DEFAULT_SECRET = "TengYunMallSecretKeyMustBeAtLeast256BitsLong==";
-
-    @Value("${security.jwt.secret:" + DEFAULT_SECRET + "}")
+    @Value("${security.jwt.secret}")
     private String secret;
 
     private Key key;

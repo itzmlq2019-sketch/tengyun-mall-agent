@@ -20,7 +20,7 @@
 - MySQL、MyBatis-Plus、Flyway
 - Redis、Redisson
 - RabbitMQ
-- Spring AI、DeepSeek API
+- Spring WebClient、DeepSeek OpenAI 兼容 API（当前由项目自行编排工具调用）
 - JUnit 5、Mockito
 
 ## 服务模块
@@ -94,6 +94,8 @@ Copy-Item env.example .env
 - `RABBITMQ_HOST`、`RABBITMQ_PORT`、`RABBITMQ_USER`、`RABBITMQ_PASSWORD`
 - `DEEPSEEK_API_KEY`、`DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`
 - `JWT_SECRET`、`JWT_EXPIRE_HOURS`
+- `INTERNAL_API_TOKEN`、`ADMIN_API_TOKEN`
+- `AGENT_REQUEST_TIMEOUT_MS`
 
 `.env` 已被 Git 忽略，不要将真实密码或密钥提交到仓库。
 
@@ -136,6 +138,18 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-all.ps1
 - 商品服务：`http://127.0.0.1:8083/swagger-ui.html`
 - 购物车服务：`http://127.0.0.1:8084/swagger-ui.html`
 - AI Agent：`http://127.0.0.1:8085/swagger-ui.html`
+
+AI 对话使用普通 POST 接口，不伪装为流式 SSE：
+
+```http
+POST /agent/chat
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"message":"推荐一款咖啡"}
+```
+
+库存扣减、库存补偿、死信查看和死信重投属于内部管理能力，网关不对普通用户开放。服务间库存调用必须携带 `INTERNAL_API_TOKEN`，死信管理必须携带 `ADMIN_API_TOKEN`。
 
 ## 冒烟测试
 

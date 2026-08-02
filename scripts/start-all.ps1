@@ -1,12 +1,18 @@
 param(
-    [string]$MvnPath = "E:\maven\apache-maven-3.9.15\bin\mvn.cmd"
+    [string]$MvnPath = ""
 )
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $logDir = Join-Path $root ".run-logs"
 
-if (-not (Test-Path $MvnPath)) {
+if ([string]::IsNullOrWhiteSpace($MvnPath)) {
+    $mavenCommand = Get-Command mvn.cmd, mvn -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($null -eq $mavenCommand) {
+        throw "Maven not found in PATH. Install Maven or pass -MvnPath with an explicit mvn.cmd path."
+    }
+    $MvnPath = $mavenCommand.Source
+} elseif (-not (Test-Path -LiteralPath $MvnPath)) {
     throw "Maven not found: $MvnPath"
 }
 if (-not (Test-Path (Join-Path $root ".env"))) {

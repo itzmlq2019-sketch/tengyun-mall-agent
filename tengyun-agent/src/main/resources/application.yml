@@ -20,6 +20,7 @@ spring:
         options:
           model: ${DEEPSEEK_MODEL:deepseek-chat}
 agent:
+  request-timeout-ms: ${AGENT_REQUEST_TIMEOUT_MS:30000}
   prompt:
     file-path: ${AGENT_SYSTEM_PROMPT_FILE:}
     reload-interval-ms: ${AGENT_PROMPT_RELOAD_INTERVAL_MS:3000}

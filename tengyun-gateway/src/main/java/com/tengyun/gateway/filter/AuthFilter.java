@@ -27,6 +27,10 @@ public class AuthFilter implements GlobalFilter, Ordered {
             "/swagger-ui",
             "/v3/api-docs"
     );
+    private static final Set<String> INTERNAL_PREFIXES = Set.of(
+            "/product/deduct",
+            "/order/dead-letter"
+    );
 
     private final JwtTokenProvider jwtTokenProvider;
     private final ObjectMapper objectMapper;
@@ -39,6 +43,10 @@ public class AuthFilter implements GlobalFilter, Ordered {
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         String path = exchange.getRequest().getURI().getPath();
+
+        if (isInternalPath(path)) {
+            return error(exchange, HttpStatus.FORBIDDEN, "INTERNAL_ENDPOINT");
+        }
 
         if (HttpMethod.OPTIONS.equals(exchange.getRequest().getMethod()) || isPublicPath(path)) {
             return chain.filter(exchange);
@@ -59,6 +67,8 @@ public class AuthFilter implements GlobalFilter, Ordered {
             ServerHttpRequest mutatedRequest = exchange.getRequest().mutate()
                     .headers(headers -> {
                         headers.remove("X-User-Id");
+                        headers.remove("X-Internal-Token");
+                        headers.remove("X-Admin-Token");
                         headers.set("X-User-Id", userId);
                     })
                     .build();
@@ -75,20 +85,29 @@ public class AuthFilter implements GlobalFilter, Ordered {
         return PUBLIC_PREFIXES.stream().anyMatch(path::startsWith);
     }
 
+    private boolean isInternalPath(String path) {
+        return INTERNAL_PREFIXES.stream().anyMatch(path::startsWith);
+    }
+
     private Mono<Void> unauthorized(ServerWebExchange exchange, String reason) {
-        exchange.getResponse().setStatusCode(HttpStatus.UNAUTHORIZED);
+        return error(exchange, HttpStatus.UNAUTHORIZED, reason);
+    }
+
+    private Mono<Void> error(ServerWebExchange exchange, HttpStatus status, String reason) {
+        exchange.getResponse().setStatusCode(status);
         exchange.getResponse().getHeaders().setContentType(MediaType.APPLICATION_JSON);
-        byte[] body = toBody(reason);
+        byte[] body = toBody(status.value(), reason);
         return exchange.getResponse().writeWith(Mono.just(exchange.getResponse()
                 .bufferFactory()
                 .wrap(body)));
     }
 
-    private byte[] toBody(String reason) {
+    private byte[] toBody(int code, String reason) {
         try {
-            return objectMapper.writeValueAsBytes(Map.of("code", 401, "message", reason));
+            return objectMapper.writeValueAsBytes(Map.of("code", code, "message", reason));
         } catch (JsonProcessingException e) {
-            return "{\"code\":401,\"message\":\"TOKEN_INVALID\"}".getBytes(StandardCharsets.UTF_8);
+            return ("{\"code\":" + code + ",\"message\":\"" + reason + "\"}")
+                    .getBytes(StandardCharsets.UTF_8);
         }
     }
 

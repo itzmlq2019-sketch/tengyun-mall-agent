@@ -13,6 +13,7 @@ import org.redisson.api.RedissonClient;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.concurrent.TimeUnit;
 
@@ -23,17 +24,20 @@ public class OrderMessageListener {
     private final ProductClient productClient;
     private final CartClient cartClient;
     private final OrderMapper orderMapper;
+    private final String internalApiToken;
 
     public OrderMessageListener(
             RedissonClient redissonClient,
             ProductClient productClient,
             CartClient cartClient,
-            OrderMapper orderMapper
+            OrderMapper orderMapper,
+            @Value("${security.internal-api-token:}") String internalApiToken
     ) {
         this.redissonClient = redissonClient;
         this.productClient = productClient;
         this.cartClient = cartClient;
         this.orderMapper = orderMapper;
+        this.internalApiToken = internalApiToken;
     }
 
     @RabbitListener(queues = RabbitConfig.ORDER_QUEUE)
@@ -65,7 +69,8 @@ public class OrderMessageListener {
                 throw new AmqpRejectAndDontRequeueException("PRODUCT_NOT_FOUND");
             }
 
-            ApiResponse<String> deductResp = productClient.deductStock(dto.getRequestId(), productId, quantity);
+            ApiResponse<String> deductResp = productClient.deductStock(
+                    dto.getRequestId(), productId, quantity, internalApiToken);
             String result = deductResp == null ? null : deductResp.data();
             if (!"SUCCESS".equals(result)) {
                 throw new RuntimeException("DEDUCT_STOCK_FAILED");
@@ -117,7 +122,7 @@ public class OrderMessageListener {
 
     private void compensateStock(String requestId, Exception originalException) {
         try {
-            ApiResponse<String> response = productClient.compensateStock(requestId);
+            ApiResponse<String> response = productClient.compensateStock(requestId, internalApiToken);
             if (response == null || !"SUCCESS".equals(response.data())) {
                 originalException.addSuppressed(new IllegalStateException("STOCK_COMPENSATION_FAILED"));
             }

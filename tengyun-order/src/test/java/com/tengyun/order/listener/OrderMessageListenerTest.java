@@ -33,6 +33,8 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class OrderMessageListenerTest {
 
+    private static final String INTERNAL_TOKEN = "test-internal-token-at-least-32-characters";
+
     @Mock
     private RedissonClient redissonClient;
     @Mock
@@ -48,7 +50,7 @@ class OrderMessageListenerTest {
 
     @BeforeEach
     void setUp() {
-        listener = new OrderMessageListener(redissonClient, productClient, cartClient, orderMapper);
+        listener = new OrderMessageListener(redissonClient, productClient, cartClient, orderMapper, INTERNAL_TOKEN);
     }
 
     @Test
@@ -66,7 +68,7 @@ class OrderMessageListenerTest {
 
         verify(cartClient).removeItem(1L, 2L);
         verify(productClient, never()).getProductInfo(any());
-        verify(productClient, never()).deductStock(any(), any(), any());
+        verify(productClient, never()).deductStock(any(), any(), any(), any());
         verify(orderMapper, never()).insert(any(Order.class));
     }
 
@@ -82,7 +84,7 @@ class OrderMessageListenerTest {
         when(lock.tryLock(3, TimeUnit.SECONDS)).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(productClient.getProductInfo(2L)).thenReturn(ApiResponse.success(productDTO));
-        when(productClient.deductStock("req-2", 2L, 3)).thenReturn(ApiResponse.success("SUCCESS"));
+        when(productClient.deductStock("req-2", 2L, 3, INTERNAL_TOKEN)).thenReturn(ApiResponse.success("SUCCESS"));
 
         listener.handleOrderMessage(dto);
 
@@ -112,7 +114,7 @@ class OrderMessageListenerTest {
         when(lock.tryLock(3, TimeUnit.SECONDS)).thenReturn(true);
         when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(productClient.getProductInfo(2L)).thenReturn(ApiResponse.success(productDTO));
-        when(productClient.deductStock("req-3", 2L, 1)).thenReturn(ApiResponse.success("FAILED"));
+        when(productClient.deductStock("req-3", 2L, 1, INTERNAL_TOKEN)).thenReturn(ApiResponse.success("FAILED"));
 
         RuntimeException ex = assertThrows(RuntimeException.class, () -> listener.handleOrderMessage(dto));
         assertEquals("ORDER_CONSUME_FAILED", ex.getMessage());
@@ -148,13 +150,13 @@ class OrderMessageListenerTest {
         when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(orderMapper.selectByRequestId("req-5")).thenReturn(null);
         when(productClient.getProductInfo(2L)).thenReturn(ApiResponse.success(productDTO));
-        when(productClient.deductStock("req-5", 2L, 1)).thenReturn(ApiResponse.success("SUCCESS"));
+        when(productClient.deductStock("req-5", 2L, 1, INTERNAL_TOKEN)).thenReturn(ApiResponse.success("SUCCESS"));
         when(orderMapper.insert(any(Order.class))).thenThrow(new RuntimeException("DB_DOWN"));
-        when(productClient.compensateStock("req-5")).thenReturn(ApiResponse.success("SUCCESS"));
+        when(productClient.compensateStock("req-5", INTERNAL_TOKEN)).thenReturn(ApiResponse.success("SUCCESS"));
 
         assertThrows(RuntimeException.class, () -> listener.handleOrderMessage(dto));
 
-        verify(productClient).compensateStock("req-5");
+        verify(productClient).compensateStock("req-5", INTERNAL_TOKEN);
         verify(cartClient, never()).removeItem(any(), any());
     }
 
@@ -171,14 +173,14 @@ class OrderMessageListenerTest {
         when(lock.isHeldByCurrentThread()).thenReturn(true);
         when(orderMapper.selectByRequestId("req-6")).thenReturn(null);
         when(productClient.getProductInfo(2L)).thenReturn(ApiResponse.success(productDTO));
-        when(productClient.deductStock("req-6", 2L, 1)).thenReturn(ApiResponse.success("SUCCESS"));
+        when(productClient.deductStock("req-6", 2L, 1, INTERNAL_TOKEN)).thenReturn(ApiResponse.success("SUCCESS"));
         doThrow(new RuntimeException("CART_DOWN")).when(cartClient).removeItem(1L, 2L);
 
         assertThrows(RuntimeException.class, () -> listener.handleOrderMessage(dto));
 
         verify(orderMapper).insert(any(Order.class));
-        verify(productClient, never()).compensateStock(any());
-        verify(productClient, times(1)).deductStock("req-6", 2L, 1);
+        verify(productClient, never()).compensateStock(any(), any());
+        verify(productClient, times(1)).deductStock("req-6", 2L, 1, INTERNAL_TOKEN);
     }
 
     @Test

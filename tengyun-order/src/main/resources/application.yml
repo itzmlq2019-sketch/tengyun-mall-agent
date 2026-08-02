@@ -38,3 +38,7 @@ spring:
 mybatis-plus:
   configuration:
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+security:
+  internal-api-token: ${INTERNAL_API_TOKEN:}
+  admin-api-token: ${ADMIN_API_TOKEN:}

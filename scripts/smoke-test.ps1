@@ -76,6 +76,6 @@ Test-Http -Name "user login validation" -Method "POST" -Url "$UserBase/user/logi
 Test-Http -Name "product deduct validation" -Method "POST" -Url "$ProductBase/product/deduct?productId=0&num=1" -ExpectedStatus 400
 Test-Http -Name "cart header validation" -Method "GET" -Url "$CartBase/cart/list" -ExpectedStatus 400
 Test-Http -Name "order body validation" -Method "POST" -Url "$OrderBase/order/checkout" -ExpectedStatus 400 -Headers @{ "X-User-Id" = "1"; "Content-Type" = "application/json" } -Body '{"productId":"abc","quantity":1}'
-Test-Http -Name "agent header validation" -Method "GET" -Url "$AgentBase/agent/chat/stream?message=hello" -ExpectedStatus 400
+Test-Http -Name "agent header validation" -Method "POST" -Url "$AgentBase/agent/chat" -ExpectedStatus 400 -Headers @{ "Content-Type" = "application/json" } -Body '{"message":"hello"}'
 
 Write-Host "Smoke test passed."

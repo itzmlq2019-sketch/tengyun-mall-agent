@@ -5,6 +5,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 @FeignClient(name = "product-service")
 public interface ProductClient {
@@ -13,7 +14,9 @@ public interface ProductClient {
     @PostMapping("/product/deduct")
     ApiResponse<String> deductStock(@RequestParam("requestId") String requestId,
                                     @RequestParam("productId") Long productId,
-                                    @RequestParam("num") Integer num);
+                                    @RequestParam("num") Integer num,
+                                    @RequestHeader("X-Internal-Token") String internalToken);
     @PostMapping("/product/deduct/compensate")
-    ApiResponse<String> compensateStock(@RequestParam("requestId") String requestId);
+    ApiResponse<String> compensateStock(@RequestParam("requestId") String requestId,
+                                        @RequestHeader("X-Internal-Token") String internalToken);
 }
